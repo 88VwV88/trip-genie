@@ -243,12 +243,32 @@ function TripDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [showShareModal, setShowShareModal] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [restoringVersionId, setRestoringVersionId] = useState("");
 
   useEffect(() => {
     api.get(`/api/trips/${id}`)
       .then((res) => setTrip(res.data.data))
       .catch((err) => setError(err.response?.data?.message || "Failed to load trip"))
       .finally(() => setLoading(false));
+  }, [id]);
+
+  const fetchVersions = async () => {
+    setVersionsLoading(true);
+    try {
+      const res = await api.get(`/api/trips/${id}/versions`);
+      setVersions(res.data.data || []);
+    } catch {
+      // silent: trip details are still usable without versions
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVersions();
   }, [id]);
 
   const saveEdit = async (field, value, section = "general", description = "") => {
@@ -262,6 +282,34 @@ function TripDetailsPage() {
       setTrip(res.data.data);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to save edit");
+    }
+  };
+
+  const regenerateRecommendedChanges = async () => {
+    setRegenerating(true);
+    setError("");
+    try {
+      const res = await api.patch(`/api/trips/${id}/regenerate-section`, { section: "itinerary" });
+      setTrip(res.data.data);
+      fetchVersions();
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to regenerate recommendations");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const restoreVersion = async (versionId) => {
+    setRestoringVersionId(versionId);
+    setError("");
+    try {
+      const res = await api.post(`/api/trips/${id}/versions/${versionId}/restore`);
+      setTrip(res.data.data);
+      fetchVersions();
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to restore version");
+    } finally {
+      setRestoringVersionId("");
     }
   };
 
@@ -328,7 +376,7 @@ function TripDetailsPage() {
                 : "text-slate-500 hover:bg-white hover:text-slate-700"
             }`}
           >
-            {tab === "edits" ? "Edit History" : tab}
+            {tab === "edits" ? "Changes Recommended In My Itinerary" : tab}
           </button>
         ))}
       </div>
@@ -486,7 +534,16 @@ function TripDetailsPage() {
       {/* ── EDIT HISTORY ── */}
       {activeTab === "edits" && (
         <section className={sectionCardClass}>
-          <h2 className="text-xl font-semibold text-slate-800">Edit History</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold text-slate-800">Changes Recommended In My Itinerary</h2>
+            <button
+              onClick={regenerateRecommendedChanges}
+              disabled={regenerating}
+              className="btn-primary rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
+            >
+              {regenerating ? "Regenerating..." : "Regenerate"}
+            </button>
+          </div>
           <p className="mt-1 text-sm text-slate-500">All changes made to this trip, including from shared collaborators.</p>
           <div className="mt-6">
             {trip.editHistory && trip.editHistory.length > 0 ? (
@@ -520,6 +577,35 @@ function TripDetailsPage() {
                 <p className="text-sm text-slate-400">No edits yet. Changes will appear here when you or collaborators edit this trip.</p>
               </div>
             )}
+          </div>
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-sm font-semibold text-slate-800">Version History</h3>
+            <p className="mt-1 text-xs text-slate-500">Regenerate creates a new version. You can restore any older version.</p>
+            <div className="mt-3 space-y-2">
+              {versionsLoading ? (
+                <p className="text-sm text-slate-500">Loading versions...</p>
+              ) : versions.length > 0 ? (
+                versions.map((version) => (
+                  <div key={version._id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">Version {version.versionNumber}</p>
+                      <p className="text-xs text-slate-500">
+                        {version.feedback || "Trip snapshot"} {version.createdAt ? `- ${new Date(version.createdAt).toLocaleString()}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => restoreVersion(version._id)}
+                      disabled={restoringVersionId === version._id}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600 disabled:opacity-50"
+                    >
+                      {restoringVersionId === version._id ? "Restoring..." : "Restore"}
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">No versions available yet.</p>
+              )}
+            </div>
           </div>
         </section>
       )}

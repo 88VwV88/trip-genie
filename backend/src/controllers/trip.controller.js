@@ -1,4 +1,5 @@
 const Trip = require("../models/trip.model");
+const Version = require("../models/version.model");
 const { generateTripPlan } = require("../services/claude.service");
 const { generateTripInputSchema, tripSectionSchema, updateTripSchema } = require("../utils/trip.schema");
 
@@ -27,6 +28,32 @@ function mergeSection(currentItinerary, generatedItinerary, section) {
   return generatedItinerary;
 }
 
+function buildTripSnapshot(trip) {
+  return {
+    destination: trip.destination,
+    days: trip.days,
+    budget: trip.budget,
+    style: trip.style,
+    interests: trip.interests,
+    month: trip.month,
+    itinerary: trip.itinerary,
+  };
+}
+
+async function createVersionSnapshot(trip, { feedback = null, baseVersionId = null } = {}) {
+  const latestVersion = await Version.findOne({ tripId: trip._id }).sort({ versionNumber: -1 });
+  const versionNumber = latestVersion ? latestVersion.versionNumber + 1 : 1;
+  const computedBaseVersionId = baseVersionId || (latestVersion ? latestVersion._id : null);
+
+  return Version.create({
+    tripId: trip._id,
+    versionNumber,
+    content: buildTripSnapshot(trip),
+    baseVersionId: computedBaseVersionId,
+    feedback,
+  });
+}
+
 async function generateTrip(req, res, next) {
   try {
     const input = generateTripInputSchema.parse({ ...req.body, userId: req.user.id });
@@ -42,6 +69,7 @@ async function generateTrip(req, res, next) {
       month: input.month,
       itinerary,
     });
+    await createVersionSnapshot(trip, { feedback: "Initial generated version" });
 
     return res.status(201).json({
       success: true,
@@ -75,6 +103,7 @@ async function saveTrip(req, res, next) {
       month,
       itinerary,
     });
+    await createVersionSnapshot(trip, { feedback: "Initial saved version" });
 
     return res.status(201).json({
       success: true,
@@ -137,7 +166,13 @@ async function regenerateTripSection(req, res, next) {
 
     const regenerated = await generateTripPlan(input, { section: parsedSection.data });
     trip.itinerary = mergeSection(trip.itinerary || {}, regenerated, parsedSection.data);
+    trip.editHistory.push({
+      editorName: req.user.name || "Owner",
+      section: parsedSection.data,
+      description: "Regenerated itinerary recommendations",
+    });
     await trip.save();
+    await createVersionSnapshot(trip, { feedback: `Regenerated ${parsedSection.data} section` });
 
     return res.json({ success: true, message: "Section regenerated", data: trip });
   } catch (error) {
@@ -177,6 +212,7 @@ async function updateTrip(req, res, next) {
     }
 
     await trip.save();
+    await createVersionSnapshot(trip, { feedback: "Updated trip details" });
     return res.json({ success: true, message: "Trip updated successfully", data: trip });
   } catch (error) {
     return next(error);
@@ -275,8 +311,75 @@ async function editSharedTrip(req, res, next) {
     });
 
     await trip.save();
+    await createVersionSnapshot(trip, { feedback: `Shared edit by ${editorName.trim()}` });
 
     return res.json({ success: true, message: "Trip updated", data: trip });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function getTripVersions(req, res, next) {
+  try {
+    const trip = await Trip.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!trip) {
+      return res.status(404).json({ success: false, message: "Trip not found" });
+    }
+
+    let versions = await Version.find({ tripId: trip._id })
+      .sort({ versionNumber: -1 })
+      .select("_id versionNumber baseVersionId feedback createdAt");
+
+    if (!versions.length) {
+      await createVersionSnapshot(trip, { feedback: "Initial version (backfilled)" });
+      versions = await Version.find({ tripId: trip._id })
+        .sort({ versionNumber: -1 })
+        .select("_id versionNumber baseVersionId feedback createdAt");
+    }
+
+    return res.json({ success: true, data: versions });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function restoreTripVersion(req, res, next) {
+  try {
+    const trip = await Trip.findOne({ _id: req.params.id, userId: req.user.id });
+    if (!trip) {
+      return res.status(404).json({ success: false, message: "Trip not found" });
+    }
+
+    const version = await Version.findOne({ _id: req.params.versionId, tripId: trip._id });
+    if (!version) {
+      return res.status(404).json({ success: false, message: "Version not found" });
+    }
+
+    const snapshot = version.content || {};
+    trip.destination = snapshot.destination || trip.destination;
+    trip.days = snapshot.days || trip.days;
+    trip.budget = snapshot.budget || trip.budget;
+    trip.style = snapshot.style || trip.style;
+    trip.interests = Array.isArray(snapshot.interests) ? snapshot.interests : trip.interests;
+    trip.month = snapshot.month || trip.month;
+    if (snapshot.itinerary) {
+      trip.itinerary = snapshot.itinerary;
+    }
+
+    trip.editHistory.push({
+      editorName: req.user.name || "Owner",
+      section: "versions",
+      description: `Restored to version ${version.versionNumber}`,
+      timestamp: new Date(),
+    });
+
+    await trip.save();
+    await createVersionSnapshot(trip, {
+      feedback: `Restored from version ${version.versionNumber}`,
+      baseVersionId: version._id,
+    });
+
+    return res.json({ success: true, message: "Trip restored successfully", data: trip });
   } catch (error) {
     return next(error);
   }
@@ -288,6 +391,8 @@ module.exports = {
   getTripById,
   getUserTrips,
   regenerateTripSection,
+  getTripVersions,
+  restoreTripVersion,
   updateTrip,
   enableSharing,
   disableSharing,

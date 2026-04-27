@@ -5,6 +5,8 @@ const {
   getTripById,
   getUserTrips,
   regenerateTripSection,
+  getTripVersions,
+  restoreTripVersion,
   updateTrip,
   enableSharing,
   disableSharing,
@@ -24,6 +26,8 @@ router.use(requireAuth);
 router.post("/generate", generateTrip);
 router.post("/save", saveTrip);
 router.patch("/:id/regenerate-section", regenerateTripSection);
+router.get("/:id/versions", getTripVersions);
+router.post("/:id/versions/:versionId/restore", restoreTripVersion);
 router.post("/:id/share", enableSharing);
 router.delete("/:id/share", disableSharing);
 router.patch("/:id", updateTrip);

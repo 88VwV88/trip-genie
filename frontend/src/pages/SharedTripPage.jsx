@@ -89,7 +89,7 @@ function SharedEditPanel({ token, trip, onTripUpdated }) {
   return (
     <form onSubmit={submitEdit} className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5">
       <h3 className="text-base font-bold text-slate-800">Suggest a change</h3>
-      <p className="mt-1 text-xs text-slate-500">Your name and changes will be recorded in the edit history.</p>
+      <p className="mt-1 text-xs text-slate-500">Your name and changes will be recorded in the recommended changes list.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">Your name</label>
@@ -197,7 +197,7 @@ function SharedTripPage() {
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`rounded-xl px-4 py-2 text-sm font-medium capitalize transition ${activeTab === tab ? "border border-indigo-200 bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:bg-white hover:text-slate-700"}`}
           >
-            {tab === "edits" ? "Edit History" : tab}
+            {tab === "edits" ? "Changes Recommended In My Itinerary" : tab}
           </button>
         ))}
       </div>
@@ -299,7 +299,7 @@ function SharedTripPage() {
       {/* ── EDIT HISTORY ── */}
       {activeTab === "edits" && (
         <section className={sectionCardClass}>
-          <h2 className="text-xl font-semibold text-slate-800">Edit History</h2>
+          <h2 className="text-xl font-semibold text-slate-800">Changes Recommended In My Itinerary</h2>
           <p className="mt-1 text-sm text-slate-500">All changes made by the owner and collaborators.</p>
           <div className="mt-6">
             {trip.editHistory && trip.editHistory.length > 0 ? (
