@@ -81,6 +81,26 @@ npm run dev
 Frontend default: `http://localhost:5173`  
 Backend default: `http://localhost:5001`
 
+## Run with Docker
+
+From the project root:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+
+- Frontend on `http://localhost:5173`
+- Backend on `http://localhost:5001`
+- MongoDB on `mongodb://localhost:27017`
+
+Notes:
+
+- Keep `backend/.env` present for backend secrets (`ANTHROPIC_API_KEY`, `JWT_SECRET`, etc.).
+- In Docker, backend uses the internal MongoDB service automatically.
+- Stop containers with `docker compose down` (add `-v` to remove MongoDB volume data).
+
 ## Frontend Pages
 
 - `/` - Landing page
